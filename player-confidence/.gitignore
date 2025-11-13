@@ -4,4 +4,6 @@ short-chart-mapping/** */
 eclipsevenv/
 eclipsevenv/** */
 
+.DS_Store
+
 https://github.com/brianjjing/what-makes-a-clutch-player.git
