@@ -2,9 +2,10 @@ import pandas as pd
 import numpy as np
 from sklearn.linear_model import Ridge
 from sklearn.preprocessing import StandardScaler
-from nba_api.stats.endpoints import LeagueGameFinder, LeagueDashPlayerClutch, PlayByPlayV3, playerdashboardbyclutch, leaguedashteamclutch
-from nba_api.stats.static import players
+from nba_api.stats.endpoints import LeagueGameFinder, LeagueDashPlayerClutch, PlayByPlayV3
+from requests.exceptions import ReadTimeout
 import regex as re
+import time
 
 """
 Game plan:
@@ -34,6 +35,11 @@ to create a meta-feature for a player's "game-changing" ability in bad situation
 2. An interactive visualization based on the "game-changer" output
 """
 
+CUSTOM_TIMEOUT = 30      # Set the read timeout explicitly to 30 seconds
+RATE_LIMIT_PAUSE = 1.5   # Seconds to wait between unique games (Rate limit control)
+POST_FAILURE_COOLDOWN = 60
+MAX_CONSECUTIVE_FAILURES = 5
+SUSTAINED_BLOCK_COOLDOWN = 300
 
 # --- 1. Getting clutch_player_stats dataframe ---
 seasons = ["2020-21", "2021-22", "2022-23", "2023-24", "2024-25"]
@@ -99,27 +105,65 @@ for season in seasons:
     clutch_pbps = pd.DataFrame([])
     total_games = len(game_ids)
     current_game_num = 1
+    consecutive_failure_count = 0
+    num_skipped = 0
     
     for game_id in game_ids['GAME_ID']:
         print(f"Game {current_game_num} / {total_games}:")
         print(f"Game ID: {game_id}")
+        pbp = pd.DataFrame()
         
-        pbp = PlayByPlayV3(game_id=game_id,
-                                    start_period=4,
-                                    end_period=10).get_data_frames()[0] #Huge num of overtimes specified
-        pbp['point_differential'] = pbp.apply(
-            lambda row: parse_score_diff_abs(row['scoreHome'], row['scoreAway']), 
-            axis=1
-        )
-        pbp['mins_remaining'] = pbp['clock'].apply(parse_time_minutes_left)
+        try:
+            # 1. Set the 30-second timeout for the request
+            pbp = PlayByPlayV3(
+                game_id=game_id, 
+                start_period=4, 
+                end_period=10, 
+                timeout=CUSTOM_TIMEOUT # The explicit 30-second timeout
+            ).get_data_frames()[0]
+            
+        except ReadTimeout as e:
+            # 2. Catch the timeout error and skip the game
+            consecutive_failure_count += 1
+        
+            if consecutive_failure_count >= MAX_CONSECUTIVE_FAILURES:
+                print(f"\n🚨 SUSTAINED BLOCK DETECTED! Pausing for {SUSTAINED_BLOCK_COOLDOWN} seconds to reset API throttle.")
+                time.sleep(SUSTAINED_BLOCK_COOLDOWN)
+            
+            print(f"Skipping Game {game_id}: ReadTimeout occurred after {CUSTOM_TIMEOUT}s. Moving to next game.")
+            # Add a longer pause after a failure before the next game starts, to avoid API throttling
+            time.sleep(POST_FAILURE_COOLDOWN) 
+            current_game_num += 1
+            num_skipped += 1
+            continue # <-- Skips processing and jumps to the next game_id
+            
+        except Exception as e:
+            # Handle other fatal errors (e.g., connection errors)
+            print(f"Skipping Game {game_id}: Fatal Error ({e}). Moving to next game.")
+            # Add a longer pause after a failure before the next game starts, to avoid API throttling
+            time.sleep(60) 
+            current_game_num += 1
+            consecutive_failure_count = 0 # Assume this failure is unique
+            num_skipped += 1
+            continue
+        
+        if not pbp.empty:
+            pbp['point_differential'] = pbp.apply(
+                lambda row: parse_score_diff_abs(row['scoreHome'], row['scoreAway']), 
+                axis=1
+            )
+            pbp['mins_remaining'] = pbp['clock'].apply(parse_time_minutes_left)
 
-        clutch_pbp = pbp[(pbp['period']>=4) & (pbp['point_differential']<=10) & (pbp['mins_remaining']<=5)]
-        print(clutch_pbp)
-        clutch_pbps = pd.concat([clutch_pbps, clutch_pbp])
-        
-        current_game_num += 1
+            clutch_pbp = pbp[(pbp['period']>=4) & (pbp['point_differential']<=10) & (pbp['mins_remaining']<=5)]
+            print(clutch_pbp)
+            clutch_pbps = pd.concat([clutch_pbps, clutch_pbp])
+            
+            current_game_num += 1
+            time.sleep(RATE_LIMIT_PAUSE) # Maintain the rate limit pause
     
     season_renamed = season.replace('-', '_')
+    with open(f"num_skipped_{season_renamed}.txt", "w") as f:
+        f.write(num_skipped)
     clutch_pbps.to_csv(f'clutch_pbp_data_{season_renamed}.csv', index=False)
 
     # Index(['gameId', 'actionNumber', 'clock', 'period', 'teamId', 'teamTricode',
