@@ -1,0 +1,130 @@
+import pandas as pd
+import numpy as np
+from sklearn.linear_model import Ridge
+from sklearn.preprocessing import StandardScaler
+from nba_api.stats.endpoints import LeagueGameFinder, LeagueDashPlayerClutch, PlayByPlayV3, playerdashboardbyclutch, leaguedashteamclutch
+from nba_api.stats.static import players
+import regex as re
+
+"""
+Game plan:
+1. Ridge regression model based on nine clutch features (in comparison to WPA)
+to create a meta-feature for a player's "game-changing" ability in bad situations.
+
+*THE OUTPUT VARIABLE:
+- How well they affect the winning probability
+
+*The clutch features:
+- Clutch percentage of points responsible for (if this exists: vs. percentage of points responsible for giving up?)
+- Clutch assist to turnover ratio
+- Clutch Usage Rate (but NOT blowout usage rate)
+- Shot taking in the clutch (not really heavily since we want to focus more on the results rather than pure confidence)
+*contextual, non-statistical data:*
+- Opponent strength (defensive and offensive rating of the opponent, with everything amplified in the playoffs)
+- Away vs home game
+- Shot clock pressure
+- Whats on the line (playoffs wise → farther-in games in a series worth more)
+
+*The time periods we are going over:
+- Last 5 minutes of 4th quarter
+- Any overtime period when the score differential is five points or less
+(NOT ANYMORE, IT'S UNFEASIBLE FOR OUR TIME FRAME): Blowout recovery --> when the score differential in a game is brought from 20 points or more to 5 points or less
+
+
+2. An interactive visualization based on the "game-changer" output
+"""
+
+
+# --- 1. Getting clutch_player_stats dataframe ---
+seasons = ["2020-21", "2021-22", "2022-23", "2023-24", "2024-25"]
+
+clutch_player_stats = pd.DataFrame([])
+for season in seasons:
+    print(f"Season: {season}")
+    clutch_stats = LeagueDashPlayerClutch(
+        clutch_time='Last 5 Minutes', 
+        point_diff='10',
+        season=season
+    )
+    df_clutch = clutch_stats.get_data_frames()
+    clutch_player_stats = pd.concat([clutch_player_stats, df_clutch[0]])
+    print("Concatenated to df!")
+    
+clutch_player_stats.to_csv('clutch_player_stats_since_2020_21.csv', index=False)
+print("clutch_player_stats df saved as .csv file")
+# Index(['GROUP_SET', 'PLAYER_ID', 'PLAYER_NAME', 'NICKNAME', 'TEAM_ID',
+#    'TEAM_ABBREVIATION', 'AGE', 'GP', 'W', 'L', 'W_PCT', 'MIN', 'FGM',
+#    'FGA', 'FG_PCT', 'FG3M', 'FG3A', 'FG3_PCT', 'FTM', 'FTA', 'FT_PCT',
+#    'OREB', 'DREB', 'REB', 'AST', 'TOV', 'STL', 'BLK', 'BLKA', 'PF', 'PFD',
+#    'PTS', 'PLUS_MINUS', 'NBA_FANTASY_PTS', 'DD2', 'TD3',
+#    'WNBA_FANTASY_PTS', 'GP_RANK', 'W_RANK', 'L_RANK', 'W_PCT_RANK',
+#    'MIN_RANK', 'FGM_RANK', 'FGA_RANK', 'FG_PCT_RANK', 'FG3M_RANK',
+#    'FG3A_RANK', 'FG3_PCT_RANK', 'FTM_RANK', 'FTA_RANK', 'FT_PCT_RANK',
+#    'OREB_RANK', 'DREB_RANK', 'REB_RANK', 'AST_RANK', 'TOV_RANK',
+#    'STL_RANK', 'BLK_RANK', 'BLKA_RANK', 'PF_RANK', 'PFD_RANK', 'PTS_RANK',
+#    'PLUS_MINUS_RANK', 'NBA_FANTASY_PTS_RANK', 'DD2_RANK', 'TD3_RANK',
+#    'WNBA_FANTASY_PTS_RANK', 'TEAM_COUNT'],
+#   dtype='object')
+
+
+# --- 2. Getting clutch_pbp_stats dataframe ---
+
+#HELPER FUNCTIONS:
+#Getting game ids:
+def get_game_ids(season):
+    games = LeagueGameFinder(season_nullable=season).get_data_frames()[0]
+    return games
+#Getting score differential:
+def parse_score_diff_abs(scoreHome, scoreAway):
+    # Check for NaN values before calculating
+    if pd.isna(scoreHome) or pd.isna(scoreAway) or scoreHome=='' or scoreAway=='':
+        return np.nan
+    return abs(int(scoreHome) - int(scoreAway))
+#Getting minutes left in quarter:
+def parse_time_minutes_left(duration_str):
+    if pd.isna(duration_str):
+        return np.nan
+    # Use regex to find minutes (M) and seconds (S) for robust extraction
+    match = re.search(r'PT(\d+M)?(\d+\.?\d*S)?', duration_str)
+    minutes = int(match.group(1)[:-1]) if match.group(1) else 0
+    seconds = float(match.group(2)[:-1]) if match.group(2) else 0
+    
+    return minutes + (seconds / 60)
+
+#Seasons loop:
+for season in seasons:
+    print(f'Season {season}')
+    
+    game_ids = get_game_ids(season)
+    clutch_pbps = pd.DataFrame([])
+    total_games = len(game_ids)
+    current_game_num = 1
+    
+    for game_id in game_ids['GAME_ID']:
+        print(f"Game {current_game_num} / {total_games}:")
+        print(f"Game ID: {game_id}")
+        
+        pbp = PlayByPlayV3(game_id=game_id,
+                                    start_period=4,
+                                    end_period=10).get_data_frames()[0] #Huge num of overtimes specified
+        pbp['point_differential'] = pbp.apply(
+            lambda row: parse_score_diff_abs(row['scoreHome'], row['scoreAway']), 
+            axis=1
+        )
+        pbp['mins_remaining'] = pbp['clock'].apply(parse_time_minutes_left)
+
+        clutch_pbp = pbp[(pbp['period']>=4) & (pbp['point_differential']<=10) & (pbp['mins_remaining']<=5)]
+        print(clutch_pbp)
+        clutch_pbps = pd.concat([clutch_pbps, clutch_pbp])
+        
+        current_game_num += 1
+    
+    season_renamed = season.replace('-', '_')
+    clutch_pbps.to_csv(f'clutch_pbp_data_{season_renamed}.csv', index=False)
+
+    # Index(['gameId', 'actionNumber', 'clock', 'period', 'teamId', 'teamTricode',
+    #        'personId', 'playerName', 'playerNameI', 'xLegacy', 'yLegacy',
+    #        'shotDistance', 'shotResult', 'isFieldGoal', 'scoreHome', 'scoreAway',
+    #        'pointsTotal', 'location', 'description', 'actionType', 'subType',
+    #        'videoAvailable', 'shotValue', 'actionId'],
+    #       dtype='object')
