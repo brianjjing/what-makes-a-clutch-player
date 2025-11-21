@@ -4,6 +4,11 @@ short-chart-mapping/** */
 eclipsevenv/
 eclipsevenv/** */
 
+datasets/
+datasets/** */
+
+testingsmth.py
+
 .DS_Store
 
 https://github.com/brianjjing/what-makes-a-clutch-player.git
