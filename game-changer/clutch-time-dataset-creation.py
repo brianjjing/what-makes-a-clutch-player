@@ -100,7 +100,7 @@ for season_start_year in season_list:
     
     is_fourth = reg_season_df['period'] >= 4
     under_ten_point_diff = abs(reg_season_df['scoreHome'] - reg_season_df['scoreAway']) <= 10
-    final_five_mins = reg_season_df['mins_left'] <= 5
+    final_five_mins = reg_season_df['mins_left'] < 5
     
     reg_season_df = reg_season_df[is_fourth & under_ten_point_diff & final_five_mins]
     print("Regular season df made")
@@ -113,7 +113,7 @@ for season_start_year in season_list:
     
     is_fourth = playoff_season_df['period'] >= 4
     under_ten_point_diff = abs(playoff_season_df['scoreHome'] - playoff_season_df['scoreAway']) <= 10
-    final_five_mins = playoff_season_df['mins_left'] <= 5
+    final_five_mins = playoff_season_df['mins_left'] < 5
     
     playoff_season_df = playoff_season_df[is_fourth & under_ten_point_diff & final_five_mins]
     print("Playoff df made")
