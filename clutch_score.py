@@ -2,16 +2,16 @@
 clutch_score.py
 ----------------
 Pulls NBA player stats via nba_api (2020-21 → present), merges regular/clutch/playoff
-splits, and computes a simple "clutch score" per player-season.
+splits, and computes a simple "clutch score" per player-season
 
 Usage (from repo root):
-    pip install nba_api pandas numpy matplotlib
+    pip install nba_api pandas numpy matplotlib scikit-learn
     python clutch_score.py
 
 Notes:
 - The NBA site can rate-limit: we sleep between calls.
-- We rely on PLAYER_ID to merge (avoid name collisions).
-- Clutch window uses NBA default: last 5 min, score within 5.
+- We rely on PLAYER_ID to merge (avoid name collisions)
+- Clutch window uses NBA default: last 5 min, score within 5
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from typing import Optional, Dict, List
 
 import numpy as np
 import pandas as pd
+from sklearn.preprocessing import MinMaxScaler
 
 from nba_api.stats.endpoints import LeagueDashPlayerStats, LeagueDashPlayerClutch
 
@@ -32,13 +33,13 @@ SEASONS: List[str] = [
     "2021-22",
     "2022-23",
     "2023-24",
-    "2024-25",  # keep if current season available
+    "2024-25",
 ]
 
-# Weights for the clutch score (tweak as desired)
+# Weights for the clutch score
 WEIGHTS: Dict[str, float] = {
     "REG": 1.0,   # Regular season
-    "CLU": 2.0,   # Clutch (last 5 min, ±5 pts)
+    "CLU": 2.0,   # Clutch (last 5 min, +- 5 pts)
     "PO":  3.0,   # Playoffs
 }
 # Small boost for players who actually take shots in clutch (volume adjustment)
@@ -252,6 +253,30 @@ def compute_clutch_score(row: pd.Series) -> float:
 
     return base + volume_adj
 
+def standardize_clutch_scores(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Standardize CLUTCH_SCORE to -10 to +10 scale using MinMaxScaler.
+    This creates a new column CLUTCH_SCORE_STD that Brian can use for modeling.
+    """
+    df = df.copy()
+    
+    # Only standardize rows with valid clutch scores
+    valid_mask = df["CLUTCH_SCORE"].notna()
+    
+    if valid_mask.sum() == 0:
+        df["CLUTCH_SCORE_STD"] = np.nan
+        return df
+    
+    # Fit scaler on valid scores
+    scaler = MinMaxScaler(feature_range=(-10, 10))
+    scores = df.loc[valid_mask, "CLUTCH_SCORE"].values.reshape(-1, 1)
+    
+    # Transform and assign
+    df.loc[valid_mask, "CLUTCH_SCORE_STD"] = scaler.fit_transform(scores).flatten()
+    df.loc[~valid_mask, "CLUTCH_SCORE_STD"] = np.nan
+    
+    return df
+
 # -----------------------
 # Runner
 # -----------------------
@@ -270,6 +295,7 @@ def run_one_season(season: str) -> pd.DataFrame:
         merged = merged[merged["MIN_REG"].fillna(0) >= 10].copy()
 
     merged["CLUTCH_SCORE"] = merged.apply(compute_clutch_score, axis=1)
+    merged = standardize_clutch_scores(merged)  # Add standardized -10 to +10 score
     merged["SEASON"] = season
 
     # Save
@@ -277,8 +303,8 @@ def run_one_season(season: str) -> pd.DataFrame:
     merged.to_csv(out_fp, index=False)
     print(f"Saved: {out_fp}")
 
-    # Show quick top-10
-    preview_cols = ["PLAYER_NAME","TEAM_ABBREVIATION","CLUTCH_SCORE",
+    # Show quick top-10 with both scores
+    preview_cols = ["PLAYER_NAME","TEAM_ABBREVIATION","CLUTCH_SCORE","CLUTCH_SCORE_STD",
                     "TS_PCT_REG","TS_PCT_CLU","TS_PCT_PO","FGA_REG","FGA_CLU"]
     for c in preview_cols:
         if c not in merged.columns:
