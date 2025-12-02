@@ -136,3 +136,5 @@ scaled_brian_df = mm_scaler.fit_transform(X=brian_df,y=None).dropna()
 
 print("\nBrian Scaled Features DataFrame:")
 print(scaled_brian_df)
+scaled_brian_df.to_csv('combined_brian_features.csv')
+print('Saved above brian_df as .csv file')
