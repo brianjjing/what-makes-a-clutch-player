@@ -37,9 +37,9 @@ playoffs_pbp['is_playoffs'] = 'Y'
 all_pbp = pd.concat([reg_season_pbp, playoffs_pbp], ignore_index=True)
 all_pbp = all_pbp.sort_values(by='personId')
 
-print(player_stats.columns)
-
+#print(player_stats.columns)
 print(all_pbp.columns)
+print(all_pbp.head())
 
 
 #FEATURE 1: PERC OF POINTS RESPONSIBLE FOR
@@ -90,11 +90,28 @@ print(ast_to_tov.head())
 
 
 #FEATURE 3: CLUTCH USAGE RATE
+def calculate_clutch_usage_rate(pbp_df):
+    player_possessions_by_game = pbp_df.groupby(['personId', 'teamTricode', 'gameId']).count()[['actionNumber']].rename(columns={'actionNumber': 'total_player_possessions'}).reset_index().set_index(['teamTricode', 'gameId'])
+    print(player_possessions_by_game.iloc[0:20])
 
+    team_possessions_by_game = pbp_df.groupby(['teamTricode', 'gameId']).count()[['actionNumber']].rename(columns={'actionNumber': 'total_team_possessions'})
+    print(team_possessions_by_game.iloc[0:20])
+
+    clutch_usage_rate = player_possessions_by_game.merge(team_possessions_by_game, on=['teamTricode', 'gameId'], how='left').reset_index().set_index(['personId'])
+    clutch_usage_rate = clutch_usage_rate.reset_index()[['personId', 'total_player_possessions', 'total_team_possessions']].groupby('personId').sum()
+    clutch_usage_rate['clutch_usage_rate'] = clutch_usage_rate['total_player_possessions'] / clutch_usage_rate['total_team_possessions']
+
+    return clutch_usage_rate.sort_values(by='clutch_usage_rate', ascending=False)[['clutch_usage_rate']]
+
+clutch_usage_rate_df = calculate_clutch_usage_rate(all_pbp)
+print(clutch_usage_rate_df['clutch_usage_rate'])
+print(clutch_usage_rate_df.head(20))
 
 #DATAFRAME CREATION:
 # Create brian_df with all features
 unique_players = player_stats['PLAYER_NAME'].unique()
+print(unique_players)
+
 brian_df = pd.DataFrame(index=unique_players)
 # brian_1: Percentage of clutch points responsible for (with playoff multiplier)
 brian_df['brian_1'] = points_responsible_pct.reindex(unique_players).fillna(0)
@@ -103,7 +120,7 @@ brian_df['brian_1'] = points_responsible_pct.reindex(unique_players).fillna(0)
 brian_df['brian_2'] = ast_to_tov.reindex(unique_players)
 
 # brian_3: Clutch usage rate
-#brian_df['brian_3'] = np.nan
+brian_df['brian_3'] = clutch_usage_rate_df['clutch_usage_rate']
 
 
 #STANDARDIZATION: Standardizing all the features to the range (-10.0, 10.0)
@@ -114,34 +131,4 @@ scaled_brian_df = mm_scaler.fit_transform(X=brian_df,y=None)
 print("\nBrian Scaled Features DataFrame:")
 print(scaled_brian_df)
 
-
-
-
-
-# #Function to get the total duration a team was playing in the clutch:
-# def get_team_clutch_duration(group):
-#     start = group['mins_left'].max()
-#     end = group['mins_left'].min()
-#     return start - end
-
-# clutch_mins_by_team_df = all_pbp[['teamId', 'gameId', 'mins_left']] #should weigh playoffs more???
-
-# #Applying the above function to get the playing duration for the teams in every game:
-# clutch_period_durations = clutch_mins_by_team_df.groupby(['teamId', 'gameId']).apply(get_team_clutch_duration)
-# print(f"Type of game_durations: {clutch_period_durations}")
-
-# #Applying it to the whole team over the whole season:
-# total_clutch_mins_by_team = clutch_period_durations.reset_index().groupby('teamId').sum().to_dict()
-
-
-# total_team_clutch_mins = player_stats['TEAM_ID'].map(total_clutch_mins_by_team)
-
-# # Calculate the Percentage
-# # Formula: (Player's Minutes / Team's Total Available Clutch Minutes) * 100
-# clutch_usage_rate = (
-#     player_stats['MIN'] / total_team_clutch_mins
-# ) * 100
-
-# print(clutch_usage_rate)
-
-# #print(player_stats[cols_to_show].sort_values(by='CLUTCH_PARTICIPATION_PCT', ascending=False).head())
+#print(player_stats[cols_to_show].sort_values(by='CLUTCH_PARTICIPATION_PCT', ascending=False).head())
