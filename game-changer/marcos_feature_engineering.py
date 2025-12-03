@@ -67,11 +67,11 @@ team_strength = (
 
 #make ints
 team_strength["TEAM_ID"] = pd.to_numeric(team_strength["TEAM_ID"], errors="coerce")
-team_strength = team_strength.dropna(subset=["TEAM_ID"])
+#team_strength = team_strength.dropna(subset=["TEAM_ID"])
 team_strength["TEAM_ID"] = team_strength["TEAM_ID"].astype(int)
 
 stats["TEAM_ID"] = pd.to_numeric(stats["TEAM_ID"], errors="coerce")
-stats = stats.dropna(subset=["TEAM_ID"])
+#stats = stats.dropna(subset=["TEAM_ID"])
 stats["TEAM_ID"] = stats["TEAM_ID"].astype(int)
 
 
@@ -126,7 +126,7 @@ feature5 = (
 )
 
 feature5["PLAYER_ID"] = pd.to_numeric(feature5["PLAYER_ID"], errors="coerce")
-feature5 = feature5.dropna(subset=["PLAYER_ID"])
+#feature5 = feature5.dropna(subset=["PLAYER_ID"])
 feature5["PLAYER_ID"] = feature5["PLAYER_ID"].astype(int)
 
 
@@ -180,7 +180,7 @@ print("Loaded Stats:", stats.shape)
 
 # Make sure TEAM_IDs in stats are numeric
 stats["TEAM_ID"] = pd.to_numeric(stats["TEAM_ID"], errors="coerce")
-stats = stats.dropna(subset=["TEAM_ID"])
+#stats = stats.dropna(subset=["TEAM_ID"])
 stats["TEAM_ID"] = stats["TEAM_ID"].astype(int)
 
 # =========================================
@@ -198,14 +198,15 @@ home_team_map = {}
 
 for game_id, game_df in pbp.groupby("gameId"):
     # scoring events with positive points
-    scoring = game_df[(game_df["pointsTotal"].notna()) & (game_df["pointsTotal"] > 0)]
+    scoring = game_df[(game_df["pointsTotal"].notna())]# & (game_df["pointsTotal"] > 0)]
     if scoring.empty:
         continue
 
     scoring = scoring.sort_values(["period", "orderNumber"])
     first = scoring.iloc[0]
 
-    teams_in_game = game_df["TEAM_ID"].dropna().unique()
+    #teams_in_game = game_df["TEAM_ID"].dropna().unique()
+    teams_in_game = game_df["TEAM_ID"].unique()
     if len(teams_in_game) < 2:
         continue
 
@@ -237,11 +238,11 @@ pbp["seconds_left_period"] = pbp["clock"].apply(clock_to_seconds)
 pbp["shot_clock_sec"] = pbp["seconds_left_period"] % 24
 
 # Avoid division by zero / NaN
-pbp = pbp.dropna(subset=["shot_clock_sec"])
+#pbp = pbp.dropna(subset=["shot_clock_sec"])
 pbp.loc[pbp["shot_clock_sec"] <= 0, "shot_clock_sec"] = 1.0
 
 # Consider only scoring events (pointsTotal > 0)
-pbp_shots = pbp[(pbp["pointsTotal"].notna()) & (pbp["pointsTotal"] > 0)]
+pbp_shots = pbp[(pbp["pointsTotal"].notna())]# & (pbp["pointsTotal"] > 0)]
 
 print("Scoring events for Feature 6:", pbp_shots.shape)
 
@@ -275,7 +276,7 @@ player_pressure = (
 
 # clean PLAYER_ID for merging
 player_pressure["PLAYER_ID"] = pd.to_numeric(player_pressure["PLAYER_ID"], errors="coerce")
-player_pressure = player_pressure.dropna(subset=["PLAYER_ID"])
+#player_pressure = player_pressure.dropna(subset=["PLAYER_ID"])
 player_pressure["PLAYER_ID"] = player_pressure["PLAYER_ID"].astype(int)
 
 # =========================================
@@ -313,7 +314,7 @@ final_feature6.to_csv("stats_with_feature6_one_row_per_player.csv", index=False)
 df = pd.read_csv("stats_with_feature6_one_row_per_player.csv")
 
 # Drop players with no clutch scoring events
-df = df.dropna(subset=["marcos_2"])
+#df = df.dropna(subset=["marcos_2"])
 
 # Sort descending by marcos_2
 df_sorted = df.sort_values(by="marcos_2", ascending=False)

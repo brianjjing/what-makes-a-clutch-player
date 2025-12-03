@@ -1,4 +1,4 @@
-import pandas as pd, numpy as np
+import pandas as pd
 from nba_api.stats.static import players
 from sklearn.preprocessing import MinMaxScaler
 """
@@ -112,11 +112,8 @@ clutch_usage_rate_series = calculate_clutch_usage_rate(all_pbp)
 print("\nClutch Usage Rate By Player:")
 print(clutch_usage_rate_series.head(20))
 
-#DATAFRAME CREATION:
-# Create brian_df with all features
-# unique_players = player_stats['PLAYER_NAME'].unique()
-# print(unique_players)
 
+#COMBINED DATAFRAME CREATION:
 unique_player_names = player_stats['PLAYER_NAME'].unique()
 brian_df = pd.DataFrame(index=unique_player_names)
 # brian_1: Percentage of clutch points responsible for (with playoff multiplier)
@@ -136,5 +133,5 @@ scaled_brian_df = mm_scaler.fit_transform(X=brian_df,y=None).dropna()
 
 print("\nBrian Scaled Features DataFrame:")
 print(scaled_brian_df)
-scaled_brian_df.to_csv('combined_brian_features.csv')
+scaled_brian_df.to_csv('game-changer/datasets/engineered-datasets/combined_brian_features.csv')
 print('Saved above brian_df as .csv file')
