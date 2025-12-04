@@ -32,16 +32,19 @@ game_changer_scaled = game_changer_scaled.dropna()
 game_changer_scaled.columns = ['brian_1', 'brian_2', 'brian_3', 'marcos_1', 'marcos_2']
 
 print(game_changer_scaled)
-
 game_changer_scaled_index = game_changer_scaled.index
+print(game_changer_scaled_index)
 
 pca = PCA(n_components = 1)
 game_changer_var = pca.fit_transform(game_changer_scaled)
 game_changer_var = pd.DataFrame(game_changer_var)
+
+
 game_changer_var = game_changer_var.set_index(game_changer_scaled_index)
 game_changer_var.columns = ['game_changer']
 
 game_changer_var = pd.DataFrame(scaler.fit_transform(game_changer_var))
+game_changer_var = game_changer_var.set_index(game_changer_scaled_index)
 
 print(game_changer_var)
 print(game_changer_var.max())
