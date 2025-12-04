@@ -1,5 +1,6 @@
 import pandas as pd
 from sklearn.decomposition import PCA
+from sklearn.linear_model import Ridge
 
 neil = pd.read_csv('/Users/brian/Documents/Python/what-makes-a-clutch-player/shot-chart-mapping/data/neil_feature.csv')
 neil = neil[['player', 'eFG_STD']]
@@ -7,6 +8,7 @@ neil.columns = ['PLAYER_NAME', 'eFG_STD']
 print(neil.isna().sum())
 
 varun = pd.read_csv('/Users/brian/Documents/Python/what-makes-a-clutch-player/weighing-stats/data/meta-features/weighed_stats_feature.csv')
+varun.columns = ['PLAYER_NAME', 'PLAYER_STATS_WEIGHED']
 print(varun.isna().sum())
 
 brianmarcos = pd.read_csv('/Users/brian/Documents/Python/what-makes-a-clutch-player/game-changer/datasets/meta-features/game_changer_var.csv')
@@ -29,7 +31,7 @@ pca = PCA(n_components=1)
 
 # 3. Fit and Transform
 # This creates your single "Clutch Variable"
-clutch_component = pca.fit_transform(meta_features[['eFG_STD', 'CLUTCH_SCORE_STD', 'GAME_CHANGER_STD']])
+clutch_component = pca.fit_transform(meta_features[['eFG_STD', 'PLAYER_STATS_WEIGHED', 'GAME_CHANGER_STD']])
 
 # 4. Check the direction!
 # PCA doesn't know "good" from "bad". It might make high efficiency negative.
@@ -50,3 +52,23 @@ if loadings[1] < 0: # Assuming index 1 is Efficiency
 meta_features['FINAL_CLUTCH_SCORE'] = clutch_component
 meta_features = meta_features.sort_values(by='FINAL_CLUTCH_SCORE', ascending=False)
 print(meta_features.head(25))
+
+
+"""
+RIDGE REGRESSION (FOR FEATURE WEIGHTS):
+"""
+
+X = meta_features[['eFG_STD', 'PLAYER_STATS_WEIGHED', 'GAME_CHANGER_STD']]
+y = meta_features['FINAL_CLUTCH_SCORE']
+ridge = Ridge(alpha=1.0)
+ridge.fit(X, y)
+
+#Getting the feature importance:
+weights = ridge.coef_
+intercept = ridge.intercept_
+
+print("\n--- Ridge Regression Weights ---")
+print(f"Intercept: {intercept:.4f}")
+print("Coefficients:")
+for feature, weight in zip(X.columns, weights):
+    print(f"  {feature}: {weight:.4f}")
